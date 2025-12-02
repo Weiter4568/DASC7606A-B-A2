@@ -26,7 +26,7 @@ def create_training_arguments() -> TrainingArguments:
         logging_steps=50,
         save_steps=1000,
         save_total_limit=3,
-        load_best_model_at_end=True,
+        load_best_model_at_end=False,
         metric_for_best_model="bleu",
         greater_is_better=True,
         max_grad_norm=1.0,
@@ -41,12 +41,17 @@ def create_training_arguments() -> TrainingArguments:
         eval_accumulation_steps=2,
     )
 
-    # Backward/forward compatibility for evaluation scheduling across transformer versions.
+    # Backward/forward compatibility for evaluation/save scheduling across transformer versions.
     if hasattr(training_args, "evaluation_strategy"):
         training_args.evaluation_strategy = "epoch"
     elif hasattr(training_args, "eval_strategy"):
         training_args.eval_strategy = "epoch"
 
+    if hasattr(training_args, "save_strategy"):
+        training_args.save_strategy = "epoch"
+        # With aligned strategies, enable best-model loading post initialization.
+        training_args.load_best_model_at_end = True
+    
     return training_args
 
 
