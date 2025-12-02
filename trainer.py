@@ -1,6 +1,6 @@
 from transformers import Trainer, TrainingArguments, DataCollatorForSeq2Seq, Seq2SeqTrainer, Seq2SeqTrainingArguments
 
-from constants import OUTPUT_DIR
+from constants import MAX_TARGET_LENGTH, OUTPUT_DIR
 from evaluation import compute_metrics
 
 
@@ -17,27 +17,41 @@ def create_training_arguments() -> TrainingArguments:
     """
     training_args = Seq2SeqTrainingArguments(
         output_dir=OUTPUT_DIR,
-        num_train_epochs=1,
-        per_device_train_batch_size=48,
-        per_device_eval_batch_size=48,
+        num_train_epochs=3,
+        per_device_train_batch_size=8,
+        per_device_eval_batch_size=8,
         learning_rate=2e-5,
         weight_decay=0.01,
-        warmup_steps=0,
-        logging_steps=100,
+        warmup_ratio=0.06,
+        logging_steps=50,
         save_steps=1000,
-        eval_strategy="steps",
-        eval_steps=500,
         save_total_limit=3,
-        load_best_model_at_end=True,
+        load_best_model_at_end=False,
         metric_for_best_model="bleu",
         greater_is_better=True,
         max_grad_norm=1.0,
         predict_with_generate=True,
-        fp16=False,
+        fp16=True,
         gradient_accumulation_steps=4,
+        gradient_checkpointing=True,
         dataloader_num_workers=4,
+        generation_max_length=MAX_TARGET_LENGTH,
+        generation_num_beams=4,
+        label_smoothing_factor=0.1,
+        eval_accumulation_steps=2,
     )
 
+    # Backward/forward compatibility for evaluation/save scheduling across transformer versions.
+    if hasattr(training_args, "evaluation_strategy"):
+        training_args.evaluation_strategy = "epoch"
+    elif hasattr(training_args, "eval_strategy"):
+        training_args.eval_strategy = "epoch"
+
+    if hasattr(training_args, "save_strategy"):
+        training_args.save_strategy = "epoch"
+        # With aligned strategies, enable best-model loading post initialization.
+        training_args.load_best_model_at_end = True
+    
     return training_args
 
 
@@ -54,7 +68,11 @@ def create_data_collator(tokenizer, model):
 
     NOTE: You are free to change this. But make sure the data collator is the same as the model.
     """
-    return DataCollatorForSeq2Seq(tokenizer=tokenizer, model=model)
+    return DataCollatorForSeq2Seq(
+        tokenizer=tokenizer,
+        model=model,
+        pad_to_multiple_of=8,
+    )
 
 
 def build_trainer(model, tokenizer, tokenized_datasets) -> Trainer:
