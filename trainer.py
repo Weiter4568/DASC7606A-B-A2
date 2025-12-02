@@ -90,7 +90,15 @@ def build_trainer(model, tokenizer, tokenized_datasets) -> Trainer:
     data_collator = create_data_collator(tokenizer, model)
     training_args: TrainingArguments = create_training_arguments()
 
-    return Seq2SeqTrainer(
+    class CleanSeq2SeqTrainer(Seq2SeqTrainer):
+        """A trainer that strips decoder_inputs_embeds before forwarding to the model."""
+
+        def _prepare_inputs(self, inputs):
+            inputs = super()._prepare_inputs(inputs)
+            inputs.pop("decoder_inputs_embeds", None)
+            return inputs
+
+    return CleanSeq2SeqTrainer(
         model=model,
         args=training_args,
         train_dataset=tokenized_datasets["train"],
