@@ -35,12 +35,17 @@ def create_training_arguments() -> TrainingArguments:
         gradient_accumulation_steps=4,
         gradient_checkpointing=True,
         dataloader_num_workers=4,
-        evaluation_strategy="epoch",
         generation_max_length=MAX_TARGET_LENGTH,
         generation_num_beams=4,
         label_smoothing_factor=0.1,
         eval_accumulation_steps=2,
     )
+
+    # Backward/forward compatibility for evaluation scheduling across transformer versions.
+    if hasattr(training_args, "evaluation_strategy"):
+        training_args.evaluation_strategy = "epoch"
+    elif hasattr(training_args, "eval_strategy"):
+        training_args.eval_strategy = "epoch"
 
     return training_args
 
