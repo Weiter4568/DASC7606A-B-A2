@@ -1,7 +1,14 @@
 from datasets import Dataset, DatasetDict, IterableDataset, IterableDatasetDict, load_dataset
 from transformers import DataCollatorForSeq2Seq
 
-from constants import MAX_INPUT_LENGTH, MAX_TARGET_LENGTH
+from constants import (
+    MAX_INPUT_LENGTH,
+    MAX_TARGET_LENGTH,
+    SRC_LANG,
+    TGT_LANG,
+    TRAIN_SAMPLES,
+    VAL_SAMPLES,
+)
 
 
 def build_dataset() -> DatasetDict | Dataset | IterableDatasetDict | IterableDataset:
@@ -17,15 +24,19 @@ def build_dataset() -> DatasetDict | Dataset | IterableDatasetDict | IterableDat
         raw_datasets["validation"] = load_dataset('wmt19', 'zh-en', split="validation")
     """
     dataset = load_dataset("wmt19", "zh-en")
-    train_dataset = dataset["train"].select(range(1300000))
-    validation_dataset = dataset["train"].select(range(1300000, 1302000))
+
+    # Subsample training for manageable compute while keeping the official validation/test
+    train_dataset = dataset["train"].select(range(TRAIN_SAMPLES))
+
+    # Validation mirrors the official test split to align evaluation
+    validation_dataset = dataset["validation"].select(range(VAL_SAMPLES))
 
     # NOTE: You should not change the test dataset
     test_dataset = dataset["validation"]
     return DatasetDict({
         "train": train_dataset,
         "validation": validation_dataset,
-        "test": test_dataset
+        "test": test_dataset,
     })
 
 
@@ -43,7 +54,15 @@ def create_data_collator(tokenizer, model):
     return DataCollatorForSeq2Seq(tokenizer=tokenizer, model=model)
 
 
-def preprocess_function(examples, prefix, tokenizer, max_input_length, max_target_length):
+def preprocess_function(
+    examples,
+    prefix,
+    tokenizer,
+    max_input_length,
+    max_target_length,
+    src_lang,
+    tgt_lang,
+):
     """
     Preprocess the data.
 
@@ -57,11 +76,24 @@ def preprocess_function(examples, prefix, tokenizer, max_input_length, max_targe
     Returns:
         Model inputs.
     """
+    tokenizer.src_lang = src_lang
+    tokenizer.tgt_lang = tgt_lang
+
     inputs = [prefix + ex["zh"] for ex in examples["translation"]]
     targets = [ex["en"] for ex in examples["translation"]]
 
-    model_inputs = tokenizer(inputs, max_length=max_input_length, truncation=True)
-    labels = tokenizer(text_target=targets, max_length=max_target_length, truncation=True)
+    model_inputs = tokenizer(
+        inputs,
+        max_length=max_input_length,
+        truncation=True,
+        padding="max_length",
+    )
+    labels = tokenizer(
+        text_target=targets,
+        max_length=max_target_length,
+        truncation=True,
+        padding="max_length",
+    )
 
     model_inputs["labels"] = labels["input_ids"]
     return model_inputs
@@ -85,7 +117,10 @@ def preprocess_data(raw_datasets: DatasetDict, tokenizer) -> DatasetDict:
             tokenizer=tokenizer,
             max_input_length=MAX_INPUT_LENGTH,
             max_target_length=MAX_TARGET_LENGTH,
+            src_lang=SRC_LANG,
+            tgt_lang=TGT_LANG,
         ),
         batched=True,
+        remove_columns=raw_datasets["train"].column_names,
     )
     return tokenized_datasets
